@@ -5,3 +5,4 @@ WORKDIR /var/www
 COPY . .
 EXPOSE 4000
 VOLUME /var/www
+CMD ["node","app.js"]
