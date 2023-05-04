@@ -1,0 +1,128 @@
+version: 2.1
+
+jobs:
+  build:
+    docker:
+      - image: node:16.0
+    steps:
+      - checkout
+      - run: npm install
+
+  code_analysis:
+    docker:
+      - image: node:16.0
+    steps:
+      - attach_workspace:
+          at: /app
+      - run: 
+          name: Measure code analysis
+          command: |
+            npm i --save-dev eslint
+            ./node_modules/.bin/eslint --init
+
+  test:
+    docker:
+      - image: node:16.0
+    steps:
+      - attach_workspace:
+          at: /app
+      - run: npm test
+
+  scan:
+    docker:
+      - image: node:16.0
+    steps:
+      - attach_workspace:
+          at: /app
+      - run:
+          name: Scan for vulnerabilities
+          command: |
+            npm install -g nsp
+            nsp check
+
+  coverage:
+    docker:
+      - image: node:16.0
+    steps:
+      - attach_workspace:
+          at: /app
+      - run:
+          name: Measure code coverage
+          command: |
+            npm install -g nyc
+            nyc --reporter=lcov npm test
+      - store_artifacts:
+          path: coverage
+
+  build_image:
+    docker:
+      - image: circleci/node:16
+    steps:
+      - attach_workspace:
+          at: /app
+      - run:
+          name: Build Docker image
+          command: |
+            docker build -t my-docker-hub-username/my-project-name:$CIRCLE_SHA1 .
+            docker login -u my-docker-hub-username -p $DOCKER_HUB_PASSWORD
+            docker push my-docker-hub-username/my-project-name:$CIRCLE_SHA1
+
+  apply_manifest:
+    docker:
+      - image: circleci/node:16
+    steps:
+      - attach_workspace:
+          at: /app
+      - run:
+          name: Applying configuration from sha tag name and type image into k8s deployment
+          command: |
+            sed something for replace sha, image and tag
+
+  apply_deploy:
+    docker:
+      - image: google/cloud-sdk:latest
+    steps:
+      - attach_workspace:
+          at: /app
+      - run:
+          name: Authenticate with GCP
+          command: |
+            echo $GCP_SERVICE_ACCOUNT_KEY | base64 --decode > gcp-key.json
+            gcloud auth activate-service-account --key-file=gcp-key.json
+            gcloud container clusters get-credentials my-k8s-cluster --zone us-central1-a --project my-gcp-project
+      - run:
+          name: Deploy to Kubernetes
+          command: |
+            kubectl apply -f k8s/deployment.yaml
+
+
+workflows:
+  version: 2
+  build-and-test:
+    jobs:
+      - build
+      - code_analysis:
+          requires:
+            - build
+      - test:
+          requires:
+            - code_analysis
+          parallelism: 4
+          environment:
+            NODE_ENV: test
+      - scan:
+          requires:
+            - test
+      - coverage:
+          requires:
+            - test
+      - build_image:
+          requires:
+            - coverage
+      - apply_manifest:
+          requires:
+            - build_image
+      - apply_deploy:
+          requires:
+            - apply_manifest
+      
