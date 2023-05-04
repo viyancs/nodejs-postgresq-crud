@@ -107,8 +107,6 @@ workflows:
       - test:
           requires:
             - code_analysis
-          environment:
-            NODE_ENV: test
       - scan:
           requires:
             - test
