@@ -107,7 +107,6 @@ workflows:
       - test:
           requires:
             - code_analysis
-          parallelism: 4
           environment:
             NODE_ENV: test
       - scan:
